@@ -2,12 +2,12 @@ import { WebSocketServer, WebSocket } from "ws";
 import z from "zod";
 const wss = new WebSocketServer({ port: 8080 });
 const joinSchema = z.object({
-  type: "join",
-  payLoad: z.object({ roomId: z.string().length(6) }),
+  type: z.enum(["join"]),
+  payload: z.object({ roomId: z.string().max(6) }),
 });
-const createSchema = z.object({ type: "create" });
+const createSchema = z.object({ type: z.enum(["create"]) });
 const sendMessageSchema = z.object({
-  type: "message",
+  type: z.enum(["message"]),
   payload: z.object({ content: z.string() }),
 });
 const alphabet = "abcdefghijklmnopqrstuvwxyz";
@@ -15,9 +15,10 @@ const roomsAndPeople = new Map<string, WebSocket>();
 const roomsAndDeliveries = new Map<string, string[]>();
 const generateRoom = () => {
   const randomNumber = Math.floor(Math.random() * 1000);
-  const randomAlphabet = Math.floor(Math.random() * 26);
   let alphabetString = "";
   for (let i = 0; i < 3; i++) {
+    const randomAlphabet = Math.floor(Math.random() * 26);
+
     alphabetString += alphabet[randomAlphabet];
   }
   return alphabetString + randomNumber;
@@ -33,6 +34,7 @@ wss.on("connection", function (socket) {
   socket.on("message", (data) => {
     try {
       const dataJson = JSON.parse(String(data));
+      console.log(dataJson);
       const dataJsonJoinParsed = joinSchema.safeParse(dataJson);
       if (dataJsonJoinParsed.success) {
         const userData: z.infer<typeof joinSchema> = dataJson;
@@ -45,14 +47,21 @@ wss.on("connection", function (socket) {
         });
 
         if (!socketExists) {
-          const roomId = userData.payLoad.roomId;
+          const roomId = userData.payload.roomId;
           roomsAndPeople.set(roomId, socket);
-          return socket.send("success");
+
+          return socket.send(
+            JSON.stringify({
+              status: "success",
+              rroomm: roomsAndPeople,
+            }),
+          );
         }
         return;
       }
       const dataJsonCreateParsed = createSchema.safeParse(dataJson);
       if (dataJsonCreateParsed.success) {
+        console.log("reached here 1");
         let socketExists = false;
         roomsAndPeople.forEach((value, key) => {
           if (value === socket) {
@@ -64,13 +73,21 @@ wss.on("connection", function (socket) {
           const roomId = generateRoom();
           roomsAndPeople.set(roomId, socket);
           const successObject = { status: "success", roomId };
-          return socket.send(JSON.stringify(successObject));
+          return socket.send(
+            JSON.stringify({
+              ...successObject,
+              abc: roomsAndPeople.get(roomId),
+            }),
+          );
         }
         return;
       }
 
       const { success } = sendMessageSchema.safeParse(dataJson);
-      if (!success) return socket.send("error");
+      if (!success) {
+        console.log("reached here");
+        return socket.send("error in message sending schema");
+      }
       let socketFound = false;
       roomsAndPeople.forEach((value, key) => {
         if (socket === value) {
@@ -87,11 +104,13 @@ wss.on("connection", function (socket) {
         }
       });
       if (!socketFound) {
-        return socket.send("error");
+        return socket.send("error socket not found");
       }
     } catch (error) {
       if (error instanceof Error) {
-        socket.send("error");
+        console.log(error);
+        console.log(data.toString());
+        socket.send("error here");
       }
     }
   });
