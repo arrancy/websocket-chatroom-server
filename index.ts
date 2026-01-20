@@ -11,7 +11,7 @@ const sendMessageSchema = z.object({
   payload: z.object({ content: z.string() }),
 });
 const alphabet = "abcdefghijklmnopqrstuvwxyz";
-const roomsAndPeople = new Map<string, WebSocket>();
+const roomsAndPeople = new Map<string, Set<WebSocket>>();
 const roomsAndDeliveries = new Map<string, string[]>();
 const generateRoom = () => {
   const randomNumber = Math.floor(Math.random() * 1000);
@@ -31,6 +31,16 @@ wss.on("connection", function (socket) {
   //     socket.send("hello there");
   //   }, 2000);
 
+  socket.on("close", () => {
+    roomsAndPeople.forEach((value, key) => {
+      value.forEach((s) => {
+        if (s === socket) {
+          value.delete(socket);
+        }
+      });
+    });
+  });
+
   socket.on("message", (data) => {
     try {
       const dataJson = JSON.parse(String(data));
@@ -40,16 +50,20 @@ wss.on("connection", function (socket) {
         const userData: z.infer<typeof joinSchema> = dataJson;
         let socketExists = false;
         roomsAndPeople.forEach((value, key) => {
-          if (value === socket) {
-            socketExists = true;
-            return socket.send("error");
-          }
+          value.forEach((s) => {
+            if (s === socket) {
+              socketExists = true;
+              return socket.send("socket already exists in a room ");
+            }
+          });
         });
 
         if (!socketExists) {
           const roomId = userData.payload.roomId;
-          roomsAndPeople.set(roomId, socket);
-
+          const socketSet = roomsAndPeople.get(roomId);
+          if (!socketSet) return socket.send("invalid roomId");
+          socketSet.add(socket);
+          roomsAndPeople.set(roomId, socketSet);
           return socket.send(
             JSON.stringify({
               status: "success",
@@ -64,14 +78,18 @@ wss.on("connection", function (socket) {
         console.log("reached here 1");
         let socketExists = false;
         roomsAndPeople.forEach((value, key) => {
-          if (value === socket) {
-            socketExists = true;
-            return socket.send("error");
-          }
+          value.forEach((s) => {
+            if (s === socket) {
+              socketExists = true;
+              return socket.send("socket already exists");
+            }
+          });
         });
         if (!socketExists) {
           const roomId = generateRoom();
-          roomsAndPeople.set(roomId, socket);
+          const socketSet = new Set<WebSocket>();
+          socketSet.add(socket);
+          roomsAndPeople.set(roomId, socketSet);
           const successObject = { status: "success", roomId };
           return socket.send(
             JSON.stringify({
@@ -88,23 +106,35 @@ wss.on("connection", function (socket) {
         console.log("reached here");
         return socket.send("error in message sending schema");
       }
-      let socketFound = false;
+      const userData: z.infer<typeof sendMessageSchema> = dataJson;
+      let socketFound: boolean = false;
+      let currentRoom = "";
       roomsAndPeople.forEach((value, key) => {
-        if (socket === value) {
-          socketFound = true;
-          roomsAndPeople.forEach((value2, key2) => {
-            if (key2 === key && value2 !== value) {
-              return value2.send(JSON.stringify(dataJson));
-            } else {
-              return value.send("error");
-            }
-          });
-        } else {
-          return;
-        }
+        value.forEach((s) => {
+          if (s === socket) {
+            socketFound = true;
+            currentRoom = key;
+          }
+        });
       });
-      if (!socketFound) {
+      if (!socketFound || !currentRoom) {
         return socket.send("error socket not found");
+      }
+      if (socketFound && currentRoom) {
+        const socketSet = roomsAndPeople.get(currentRoom);
+        if (!socketSet) return socket.send("unknown error occured");
+        socketSet.forEach((value) => {
+          if (value !== socket && value.readyState === WebSocket.OPEN) {
+            const messageObject = {
+              type: "message",
+              payload: { content: userData.payload.content },
+            };
+            value.send(JSON.stringify(messageObject));
+            return;
+          } else {
+            return;
+          }
+        });
       }
     } catch (error) {
       if (error instanceof Error) {
