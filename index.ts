@@ -53,7 +53,11 @@ wss.on("connection", function (socket) {
           value.forEach((s) => {
             if (s === socket) {
               socketExists = true;
-              return socket.send("socket already exists in a room ");
+              const errorObject = {
+                type: "error",
+                payload: { errorMessage: "socket already exists in a room" },
+              };
+              return socket.send(JSON.stringify(errorObject));
             }
           });
         });
@@ -61,13 +65,16 @@ wss.on("connection", function (socket) {
         if (!socketExists) {
           const roomId = userData.payload.roomId;
           const socketSet = roomsAndPeople.get(roomId);
-          if (!socketSet) return socket.send("invalid roomId");
+          const errorObject = {
+            type: "error",
+            payload: { errorMessage: "invalid roomId" },
+          };
+          if (!socketSet) return socket.send(JSON.stringify(errorObject));
           socketSet.add(socket);
           roomsAndPeople.set(roomId, socketSet);
           return socket.send(
             JSON.stringify({
               status: "success",
-              rroomm: roomsAndPeople,
             }),
           );
         }
@@ -75,13 +82,16 @@ wss.on("connection", function (socket) {
       }
       const dataJsonCreateParsed = createSchema.safeParse(dataJson);
       if (dataJsonCreateParsed.success) {
-        console.log("reached here 1");
         let socketExists = false;
         roomsAndPeople.forEach((value, key) => {
           value.forEach((s) => {
             if (s === socket) {
               socketExists = true;
-              return socket.send("socket already exists");
+              const errorObject = {
+                type: "error",
+                payload: { errorMessage: "socket already exists in a room" },
+              };
+              return socket.send(JSON.stringify(errorObject));
             }
           });
         });
@@ -91,12 +101,7 @@ wss.on("connection", function (socket) {
           socketSet.add(socket);
           roomsAndPeople.set(roomId, socketSet);
           const successObject = { status: "success", roomId };
-          return socket.send(
-            JSON.stringify({
-              ...successObject,
-              abc: roomsAndPeople.get(roomId),
-            }),
-          );
+          return socket.send(JSON.stringify(successObject));
         }
         return;
       }
@@ -104,7 +109,11 @@ wss.on("connection", function (socket) {
       const { success } = sendMessageSchema.safeParse(dataJson);
       if (!success) {
         console.log("reached here");
-        return socket.send("error in message sending schema");
+        const errorObject = {
+          type: "error",
+          payload: { errorMessage: "error in message sending schema" },
+        };
+        return socket.send(JSON.stringify(errorObject));
       }
       const userData: z.infer<typeof sendMessageSchema> = dataJson;
       let socketFound: boolean = false;
@@ -118,7 +127,11 @@ wss.on("connection", function (socket) {
         });
       });
       if (!socketFound || !currentRoom) {
-        return socket.send("error socket not found");
+        const errorObject = {
+          type: "error",
+          payload: { errorMessage: "socket not found" },
+        };
+        return socket.send(JSON.stringify(errorObject));
       }
       if (socketFound && currentRoom) {
         const socketSet = roomsAndPeople.get(currentRoom);
@@ -132,7 +145,12 @@ wss.on("connection", function (socket) {
             value.send(JSON.stringify(messageObject));
             return;
           } else {
-            return;
+            return value.send(
+              JSON.stringify({
+                type: "success",
+                payload: { content: "message sent successfully" },
+              }),
+            );
           }
         });
       }
@@ -140,7 +158,11 @@ wss.on("connection", function (socket) {
       if (error instanceof Error) {
         console.log(error);
         console.log(data.toString());
-        socket.send("error here");
+        const errorObject = {
+          type: "error",
+          payload: { errorMessage: "internal server error" },
+        };
+        return socket.send(JSON.stringify(errorObject));
       }
     }
   });
