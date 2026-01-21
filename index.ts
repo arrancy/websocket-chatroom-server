@@ -74,7 +74,7 @@ wss.on("connection", function (socket) {
           roomsAndPeople.set(roomId, socketSet);
           return socket.send(
             JSON.stringify({
-              status: "success",
+              status: "successJoin",
             }),
           );
         }
@@ -100,7 +100,7 @@ wss.on("connection", function (socket) {
           const socketSet = new Set<WebSocket>();
           socketSet.add(socket);
           roomsAndPeople.set(roomId, socketSet);
-          const successObject = { status: "success", roomId };
+          const successObject = { status: "success", payload: { roomId } };
           return socket.send(JSON.stringify(successObject));
         }
         return;
